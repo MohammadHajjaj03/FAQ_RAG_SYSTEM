@@ -204,6 +204,7 @@ For an external integration use the async pair instead:
 | | Endpoint | Returns |
 |---|---|---|
 | **Ask** | `POST /v1/messages` | the answer, in the same response (~10s) |
+| **Ask, streamed** | `POST /v1/messages/stream` | answer text as the model writes it (SSE) |
 | Ask, text only | `POST /v1/messages?format=text` | bare answer as `text/plain`, TTS-ready |
 | **Live push** | `WS /v1/ws` | every message pushed on arrival (~90 ms) |
 | Don't wait | `POST /v1/messages?wait=0` | `202` + `message_id` to collect later |
@@ -223,6 +224,44 @@ timeout above 60 seconds**.
 
 Use `WS /v1/ws` for anything that must react instantly — SSE (`GET /v1/events`) is also
 available but is buffered to death by Cloudflare-style tunnels.
+
+#### Streaming the answer
+
+`POST /v1/messages/stream` returns the same answer as `POST /v1/messages`, but fills the wait
+with partial text instead of silence:
+
+```bash
+curl -N -X POST localhost:8000/v1/messages/stream      -H 'Content-Type: application/json' -d '{"text":"وش طرق الدفع عندكم؟"}'
+# event: stream.open  {"message_id": "msg_..."}
+# event: delta        {"text": "عندنا عدة طرق دفع ميسرة: "}
+# event: delta        {"text": "تابي، تمارا، مدى..."}
+# event: done         {"answer": "...", "cited_faq_ids": ["011"], "confident": true}
+```
+
+| `event` | payload | meaning |
+|---|---|---|
+| `stream.open` | `message_id` | accepted; generation starting |
+| `delta` | `text` | append to what you are showing |
+| `reset` | `reason` | **discard everything shown so far** |
+| `done` | the full message result | settled answer, citations, confidence |
+| `error` | `error` | generation failed; nothing further follows |
+
+Retrieval and reranking still run before the first token, so `delta` events begin at roughly
+3s and then arrive every 150-400ms. `done` carries the identical payload to the blocking
+endpoint and is **authoritative** — concatenated deltas are the same text arriving early, so
+branch on `confident` there exactly as before.
+
+Two details a client must handle:
+
+- **`reset` means retract.** It fires when the model reveals only partway through that the
+  context did not support an answer, or when generation fails after text was already sent.
+  Streamed text cannot be recalled, so the server says so explicitly. Ignoring it leaves a
+  retracted answer on screen.
+- **The `SOURCES: 011` line never appears in a `delta`.** It is withheld as the model writes
+  it, so citations arrive only in `done`.
+
+Streamed messages are recorded like any other, so they still appear in `GET /v1/history` and
+are broadcast to `/v1/events` and `/v1/ws` listeners.
 
 Answer fields are `null` until `status` is `done`, so clients must branch on `status` — and on
 `confident`, exactly as the chat UI does. Full contract: **[docs/INTEGRATION.md](docs/INTEGRATION.md)**.

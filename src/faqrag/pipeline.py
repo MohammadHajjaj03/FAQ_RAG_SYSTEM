@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import logging
 import time
+from typing import Iterator
 
 from .config import Settings, get_settings
-from .generate import AnswerGenerator, to_citations
+from .generate import (
+    AnswerGenerator,
+    StreamDelta,
+    StreamFinal,
+    StreamReset,
+    to_citations,
+)
 from .llm import build_llm
 from .logging_utils import build_trace, log_retrieval_summary, write_trace
 from .models import QueryResponse, RetrievalResult
@@ -63,7 +70,52 @@ class RagPipeline:
 
         answer_text, cited_ids = self.generator.generate(result)
         latency_ms = (time.perf_counter() - started) * 1000.0
+        return self._build_response(question, result, answer_text, cited_ids, latency_ms)
 
+    def answer_stream(
+        self, question: str, top_k: int | None = None
+    ) -> Iterator[StreamDelta | StreamReset | QueryResponse]:
+        """Answer ``question``, yielding answer text as the model produces it.
+
+        Retrieval is unchanged and still happens up front -- only generation is
+        incremental, so the first delta arrives after retrieval and reranking
+        have completed, not immediately.
+
+        Yields:
+            :class:`StreamDelta` for each piece of answer text, possibly a
+            :class:`StreamReset` instructing the consumer to discard what it has
+            shown, and finally exactly one :class:`QueryResponse` -- the same
+            object :meth:`answer` returns, so both paths agree on citations,
+            confidence, and the trace written to disk.
+        """
+        started = time.perf_counter()
+        result = self.retriever.retrieve(question, top_k)
+        log_retrieval_summary(logger, result)
+
+        answer_text = ""
+        cited_ids: list[str] = []
+        for event in self.generator.generate_stream(result):
+            if isinstance(event, StreamFinal):
+                answer_text, cited_ids = event.answer, event.cited_faq_ids
+            else:
+                yield event
+
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        yield self._build_response(question, result, answer_text, cited_ids, latency_ms)
+
+    def _build_response(
+        self,
+        question: str,
+        result: RetrievalResult,
+        answer_text: str,
+        cited_ids: list[str],
+        latency_ms: float,
+    ) -> QueryResponse:
+        """Assemble the wire response and write the retrieval trace.
+
+        Shared by the blocking and streaming paths so the two cannot diverge in
+        what they report.
+        """
         confidence = max((c.relevance or 0.0 for c in result.chunks), default=0.0)
         response = QueryResponse(
             answer=answer_text,

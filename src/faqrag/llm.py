@@ -7,9 +7,11 @@ change.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
+from typing import Iterator
 
 import httpx
 
@@ -53,6 +55,26 @@ class LLMClient(ABC):
             temperature: Overrides the configured temperature when given.
             max_tokens: Overrides the configured token budget when given.
         """
+
+    def stream(
+        self,
+        system: str,
+        user: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]:
+        """Yield the response in pieces as the model produces them.
+
+        The default is a single chunk from :meth:`complete`, so a provider with
+        no streaming endpoint still satisfies this interface -- the caller sees
+        one large delta rather than many small ones, never an error. Only
+        override it where the provider can genuinely push partial text.
+
+        Note that :func:`strip_reasoning` cannot be applied to a partial delta,
+        because a ``<think>`` block may straddle two chunks. Providers whose
+        models inline a scratchpad should therefore not override this.
+        """
+        yield self.complete(system, user, temperature, max_tokens)
 
 
 class OllamaLLM(LLMClient):
@@ -226,6 +248,83 @@ class AnthropicLLM(LLMClient):
                 f"{body.get('stop_reason')!r})"
             )
         return content
+
+    def stream(
+        self,
+        system: str,
+        user: str,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+    ) -> Iterator[str]:
+        """Yield text deltas from the Messages API as they arrive.
+
+        Identical request to :meth:`complete` plus ``stream: true``, consumed as
+        Server-Sent Events. Only ``text_delta`` payloads are surfaced; the
+        envelope events (message_start, content_block_start, ping, ...) carry no
+        answer text.
+        """
+        budget = self._max_tokens if max_tokens is None else max_tokens
+        payload = {
+            "model": self._model,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+            "max_tokens": budget,
+            "temperature": self._temperature if temperature is None else temperature,
+            "stream": True,
+        }
+
+        saw_text = False
+        stop_reason: str | None = None
+        try:
+            with httpx.stream(
+                "POST", self._url, json=payload, headers=self._headers, timeout=self._timeout
+            ) as response:
+                if response.status_code >= 400:
+                    # A streaming response body is not read until asked for, and
+                    # describe_http_error needs it to quote the provider's own
+                    # explanation of the rejection.
+                    response.read()
+                    response.raise_for_status()
+
+                for line in response.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    try:
+                        event = json.loads(line[len("data:") :].strip())
+                    except json.JSONDecodeError:
+                        # A malformed frame is not worth aborting a good stream.
+                        logger.warning("skipping unparsable stream frame")
+                        continue
+
+                    kind = event.get("type")
+                    if kind == "content_block_delta":
+                        delta = event.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            text = delta.get("text", "")
+                            if text:
+                                saw_text = True
+                                yield text
+                    elif kind == "message_delta":
+                        stop_reason = event.get("delta", {}).get("stop_reason") or stop_reason
+                    elif kind == "error":
+                        detail = event.get("error", {}).get("message", "unknown")
+                        raise LLMError(f"{self._model} stream error: {detail}")
+        except httpx.HTTPError as exc:
+            raise LLMError(
+                f"Anthropic stream to {self._model} failed: {describe_http_error(exc)}"
+            ) from exc
+
+        if not saw_text:
+            # Mirrors complete(): no text at all is a failure, and the budget is
+            # the usual cause worth naming.
+            if stop_reason == "max_tokens":
+                raise LLMError(
+                    f"{self._model} hit its {budget}-token budget before "
+                    f"producing any answer. Raise FAQRAG_LLM_MAX_TOKENS."
+                )
+            raise LLMError(
+                f"{self._model} streamed no text (stop_reason={stop_reason!r})"
+            )
 
 
 _PROVIDERS: dict[str, type[LLMClient]] = {

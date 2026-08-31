@@ -52,6 +52,7 @@ from fastapi import (
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from .generate import StreamDelta, StreamReset
 from .models import QueryResponse, SourceCitation
 
 logger = logging.getLogger(__name__)
@@ -291,6 +292,15 @@ class MessageService:
         """The backing message store."""
         return self._store
 
+    @property
+    def pipeline(self) -> Any:
+        """The shared RAG pipeline, loaded on first use.
+
+        Exposed for the streaming endpoint, which drives generation itself
+        instead of handing the question to the worker pool.
+        """
+        return self._get_pipeline()
+
     def submit(self, text: str, top_k: int | None = None) -> Message:
         """Queue ``text`` for answering and return immediately."""
         message = self._store.create(text)
@@ -497,6 +507,128 @@ def _sse(event: str, data: dict[str, Any]) -> str:
 def build_messages_router(service: MessageService) -> APIRouter:
     """Build the ``/v1/messages`` router backed by ``service``."""
     router = APIRouter(prefix="/v1", tags=["Integration (async)"])
+
+    @router.post(
+        "/messages/stream",
+        response_model=None,
+        summary="Ask a question and receive the answer as it is written",
+        response_description=(
+            "A text/event-stream of delta events carrying answer text, closed by "
+            "a single done event with citations and confidence."
+        ),
+        responses={
+            200: {
+                "content": {"text/event-stream": {}},
+                "description": "An open SSE stream of answer chunks.",
+            },
+            422: {"description": "text was empty or longer than 2000 characters."},
+        },
+    )
+    def stream_message(
+        payload: InboundMessage = Body(..., openapi_examples=INBOUND_EXAMPLES),
+    ) -> StreamingResponse:
+        """Answer a question, pushing text as the model writes it.
+
+        Same answer as `POST /v1/messages`, but the wait is filled with partial
+        text instead of silence. Retrieval and reranking still run first, so the
+        first `delta` lands after roughly a second, not instantly.
+
+        Event types:
+
+        | `event` | payload | meaning |
+        |---|---|---|
+        | `stream.open` | `message_id` | accepted; generation starting |
+        | `delta` | `text` | append this to what you are showing |
+        | `reset` | `reason` | **discard everything shown so far** |
+        | `done` | the full message result | settled answer, citations, confidence |
+        | `error` | `error` | generation failed; nothing further follows |
+
+        The `done` payload is identical to what `POST /v1/messages` returns, and
+        is authoritative: concatenated deltas are the same text arriving early.
+        Branch on `confident` there exactly as with the blocking endpoint.
+
+        `reset` is rare but must be handled -- it fires when the model reveals
+        only partway through that the context did not support an answer. Ignoring
+        it leaves a retracted answer on screen.
+
+        ```js
+        const res = await fetch("/v1/messages/stream", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({text: "وش طرق الدفع عندكم؟"}),
+        });
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        // then split on the blank line between frames and dispatch on `event:`
+        ```
+
+        The stream is recorded in the message store like any other message, so it
+        still appears in `GET /v1/history` and is broadcast to `/v1/events` and
+        `/v1/ws` listeners.
+        """
+        message = service.store.create(payload.text)
+        service.broadcaster.publish(
+            "message.received",
+            {
+                "message_id": message.message_id,
+                "text": message.text,
+                "created_at": message.created_at.isoformat(),
+            },
+        )
+
+        def stream() -> Iterator[str]:
+            # Same tunnel-buffering defence as GET /v1/events: without this the
+            # stream is correct on localhost and silent through a proxy.
+            yield SSE_PROXY_PADDING
+            yield _sse("stream.open", {"message_id": message.message_id})
+            service.store.mark_processing(message.message_id)
+            try:
+                for event in service.pipeline.answer_stream(payload.text, payload.top_k):
+                    if isinstance(event, StreamDelta):
+                        yield _sse("delta", {"text": event.text})
+                    elif isinstance(event, StreamReset):
+                        yield _sse("reset", {"reason": event.reason})
+                    else:
+                        # The terminal QueryResponse: store it so the message
+                        # behaves like every other, then report it.
+                        service.store.complete(message.message_id, event)
+                        stored = service.store.get(message.message_id)
+                        result = (
+                            to_result(stored) if stored is not None else None
+                        )
+                        data = (
+                            result.model_dump(mode="json")
+                            if result is not None
+                            else event.model_dump(mode="json")
+                        )
+                        yield _sse("done", data)
+                        if result is not None:
+                            service.broadcaster.publish("message.answered", data)
+                        logger.info(
+                            "message %s streamed in %sms (confident=%s)",
+                            message.message_id,
+                            event.latency_ms,
+                            event.confident,
+                        )
+            except Exception as exc:  # noqa: BLE001 - the stream must report, not crash
+                logger.exception("streaming message %s failed", message.message_id)
+                service.store.fail(message.message_id, str(exc))
+                service.broadcaster.publish(
+                    "message.failed",
+                    {"message_id": message.message_id, "error": str(exc)},
+                )
+                yield _sse(
+                    "error", {"message_id": message.message_id, "error": str(exc)}
+                )
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @router.post(
         "/messages",
