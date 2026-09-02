@@ -14,6 +14,8 @@ from .generate import (
     StreamReset,
     to_citations,
 )
+from .greeting import greeting_reply, is_greeting
+from .lang import detect_language
 from .llm import build_llm
 from .logging_utils import build_trace, log_retrieval_summary, write_trace
 from .models import QueryResponse, RetrievalResult
@@ -65,6 +67,9 @@ class RagPipeline:
             answer says so rather than guessing.
         """
         started = time.perf_counter()
+        if is_greeting(question):
+            return self._greeting_response(question, started)
+
         result = self.retriever.retrieve(question, top_k)
         log_retrieval_summary(logger, result)
 
@@ -89,6 +94,12 @@ class RagPipeline:
             confidence, and the trace written to disk.
         """
         started = time.perf_counter()
+        if is_greeting(question):
+            response = self._greeting_response(question, started)
+            yield StreamDelta(text=response.answer)
+            yield response
+            return
+
         result = self.retriever.retrieve(question, top_k)
         log_retrieval_summary(logger, result)
 
@@ -102,6 +113,31 @@ class RagPipeline:
 
         latency_ms = (time.perf_counter() - started) * 1000.0
         yield self._build_response(question, result, answer_text, cited_ids, latency_ms)
+
+    def _greeting_response(self, question: str, started: float) -> QueryResponse:
+        """Answer a bare greeting without touching retrieval or the model.
+
+        Returned as a normal :class:`QueryResponse` so every caller -- CLI, API,
+        websocket -- renders it exactly like any other answer. ``confident`` is
+        ``True`` because the reply is correct by construction; there are simply
+        no sources to cite, which is honest rather than a refusal.
+        """
+        lang = detect_language(question, default="ar")
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        logger.info("greeting shortcut hit (lang=%s, %.1fms)", lang, latency_ms)
+        return QueryResponse(
+            answer=greeting_reply(lang, question),
+            cited_faq_ids=[],
+            sources=[],
+            retrieved=[],
+            confidence=1.0,
+            confident=True,
+            language=lang,
+            query=question,
+            reranked=False,
+            cross_lingual_fallback=False,
+            latency_ms=round(latency_ms, 1),
+        )
 
     def _build_response(
         self,
