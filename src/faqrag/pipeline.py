@@ -204,6 +204,8 @@ class RagPipeline:
         for chunk in self.generator.stream_generate(result):
             if not chunk:
                 continue
+            if parts and parts[-1] and not parts[-1][-1].isspace() and not chunk[0].isspace():
+                parts.append(" ")
             parts.append(chunk)
             current = "".join(parts)
             marker_index = current.upper().find(_STREAM_SOURCES_MARKER)
