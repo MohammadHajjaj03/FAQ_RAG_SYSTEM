@@ -20,3 +20,44 @@ INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
 03:26:42 INFO    faqrag.pipeline |   #4 025::ar score=0.000 vec=0.264 bm25=- rerank=0.0 | كيف أبدأ استخدام موفق كفرد؟
 03:26:42 INFO    faqrag.pipeline |   #5 026::ar score=0.000 vec=0.219 bm25=- rerank=0.0 | كيف تبدأ شركتي باستخدام موفق أعمال؟
 03:26:42 INFO    faqrag.generate | no confident match for 'كيفك سهل.'; declining to answer
+04:03:15 INFO    faqrag.retriever | same-language best score 0.215 below fallback threshold 0.450; allowing cross-lingual results
+04:03:17 INFO    faqrag.pipeline | query='السلام عليكم، كيف الحال؟' lang=ar confident=False reranked=True cross_lingual=True candidates=5
+04:03:17 INFO    faqrag.pipeline |   #1 009::ar score=0.000 vec=0.203 bm25=3.653 rerank=0.0 | كيف أحجز فحصي الطبي عبر موفق؟ (خطوات الحجز)
+04:03:17 INFO    faqrag.pipeline |   #2 020::ar score=0.000 vec=- bm25=2.383 rerank=0.0 | كيف تعمل رحلة موفق أعمال من التسجيل حتى التوسع؟
+04:03:17 INFO    faqrag.pipeline |   #3 025::ar score=0.000 vec=0.212 bm25=3.239 rerank=0.0 | كيف أبدأ استخدام موفق كفرد؟
+04:03:17 INFO    faqrag.pipeline |   #4 026::ar score=0.000 vec=- bm25=3.166 rerank=0.0 | كيف تبدأ شركتي باستخدام موفق أعمال؟
+04:03:17 INFO    faqrag.pipeline |   #5 029::ar score=0.000 vec=- bm25=2.668 rerank=0.0 | كيف يعرّف الملف التعريفي منصة موفق أعمال ورؤيتها؟
+04:03:17 INFO    faqrag.generate | no confident match for 'السلام عليكم، كيف الحال؟'; declining to answer
+04:03:48 INFO    faqrag.pipeline | query='إيش الخدمات اللي بوفرها موفق؟' lang=ar confident=True reranked=True cross_lingual=False candidates=5
+04:03:48 INFO    faqrag.pipeline |   #1 001::ar score=1.000 vec=0.576 bm25=1.321 rerank=9.0 | ما هي منصة موفق؟
+04:03:48 INFO    faqrag.pipeline |   #2 007::ar score=0.889 vec=0.591 bm25=4.562 rerank=8.0 | ما هي الفحوصات الطبية التي تقدمها موفق للأفراد؟
+04:03:48 INFO    faqrag.pipeline |   #3 008::ar score=0.889 vec=0.494 bm25=1.362 rerank=8.0 | لماذا أختار موفق لإجراء فحصي الطبي؟
+04:03:48 INFO    faqrag.pipeline |   #4 015::ar score=0.778 vec=0.565 bm25=1.331 rerank=7.0 | ما هو موفق أعمال؟
+04:03:48 INFO    faqrag.pipeline |   #5 018::ar score=0.778 vec=0.507 bm25=6.215 rerank=7.0 | هل تقدم موفق أعمال خدمات تدريبية للموظفين؟
+04:13:49 INFO    faqrag.retriever | same-language best score 0.299 below fallback threshold 0.450; allowing cross-lingual results
+04:13:51 INFO    faqrag.pipeline | query='حي الله أبو سهل، احكيلي عن موفق.' lang=ar confident=True reranked=True cross_lingual=True candidates=5
+04:13:51 INFO    faqrag.pipeline |   #1 004::ar score=1.000 vec=0.248 bm25=1.425 rerank=8.0 | لماذا تأسست موفق؟ وما هي قصتها؟
+04:13:51 INFO    faqrag.pipeline |   #2 015::ar score=0.875 vec=0.273 bm25=1.331 rerank=7.0 | ما هو موفق أعمال؟
+04:13:51 INFO    faqrag.pipeline |   #3 006::ar score=0.750 vec=0.229 bm25=4.781 rerank=6.0 | ماذا قال المدير التنفيذي عن رؤية موفق؟
+04:13:51 INFO    faqrag.pipeline |   #4 024::ar score=0.250 vec=0.299 bm25=5.255 rerank=2.0 | أين يقع مقر موفق؟ وكيف أتواصل معهم؟
+04:13:51 INFO    faqrag.pipeline |   #5 028::ar score=0.250 vec=0.238 bm25=1.479 rerank=2.0 | ما الأقسام التي يغطيها الملف التعريفي لحلول الأعمال 2026؟
+04:22:10 INFO    faqrag.retriever | same-language best score 0.289 below fallback threshold 0.450; allowing cross-lingual results
+04:22:13 INFO    faqrag.pipeline | query='هيا الله بسهل، احكيلي شوي عن السيستم.' lang=ar confident=True reranked=True cross_lingual=True candidates=5
+04:22:13 INFO    faqrag.pipeline |   #1 034::ar score=1.000 vec=0.289 bm25=- rerank=9.0 | ما عناصر التحول الرقمي مع حلول موفق؟
+04:22:13 INFO    faqrag.pipeline |   #2 035::ar score=1.000 vec=0.239 bm25=- rerank=9.0 | ما حلول موفق للأعمال المذكورة في الملف التعريفي؟
+04:22:13 INFO    faqrag.pipeline |   #3 016::ar score=0.889 vec=- bm25=3.216 rerank=8.0 | لماذا يُعد موفق أعمال مهماً للشركات؟
+04:22:13 INFO    faqrag.pipeline |   #4 045::ar score=0.667 vec=- bm25=2.566 rerank=6.0 | ما الرسائل الرئيسية التي يذكرها الملف عن فحص الموظفين عبر موفق؟
+04:22:13 INFO    faqrag.pipeline |   #5 028::ar score=0.556 vec=0.249 bm25=- rerank=5.0 | ما الأقسام التي يغطيها الملف التعريفي لحلول الأعمال 2026؟
+04:27:18 INFO    faqrag.retriever | same-language best score 0.285 below fallback threshold 0.450; allowing cross-lingual results
+04:27:20 INFO    faqrag.pipeline | query='هيا يلا أبو سهل، احكيلي عن السيستم.' lang=ar confident=True reranked=True cross_lingual=True candidates=5
+04:27:20 INFO    faqrag.pipeline |   #1 034::ar score=1.000 vec=0.285 bm25=- rerank=9.0 | ما عناصر التحول الرقمي مع حلول موفق؟
+04:27:20 INFO    faqrag.pipeline |   #2 035::ar score=1.000 vec=0.265 bm25=- rerank=9.0 | ما حلول موفق للأعمال المذكورة في الملف التعريفي؟
+04:27:20 INFO    faqrag.pipeline |   #3 016::ar score=0.889 vec=- bm25=3.216 rerank=8.0 | لماذا يُعد موفق أعمال مهماً للشركات؟
+04:27:20 INFO    faqrag.pipeline |   #4 033::ar score=0.778 vec=0.245 bm25=- rerank=7.0 | كيف تصف موفق التحول الرقمي للحالة التقليدية؟
+04:27:20 INFO    faqrag.pipeline |   #5 028::ar score=0.556 vec=0.265 bm25=- rerank=5.0 | ما الأقسام التي يغطيها الملف التعريفي لحلول الأعمال 2026؟
+04:38:45 INFO    faqrag.pipeline | query='يلا بسهل، احكيلي، مين إيش الدورات أو الفحوصات اللي بنعملها في موف؟' lang=ar confident=True reranked=True cross_lingual=False candidates=5
+04:38:45 INFO    faqrag.pipeline |   #1 007::ar score=1.000 vec=0.453 bm25=2.649 rerank=9.0 | ما هي الفحوصات الطبية التي تقدمها موفق للأفراد؟
+04:38:45 INFO    faqrag.pipeline |   #2 035::ar score=0.667 vec=0.396 bm25=3.376 rerank=6.0 | ما حلول موفق للأعمال المذكورة في الملف التعريفي؟
+04:38:45 INFO    faqrag.pipeline |   #3 037::ar score=0.667 vec=0.387 bm25=3.652 rerank=6.0 | ما مميزات نظام موفق للفحوصات الطبية؟
+04:38:45 INFO    faqrag.pipeline |   #4 008::ar score=0.556 vec=0.416 bm25=3.062 rerank=5.0 | لماذا أختار موفق لإجراء فحصي الطبي؟
+04:38:45 INFO    faqrag.pipeline |   #5 017::ar score=0.556 vec=0.434 bm25=2.510 rerank=5.0 | ما هي خدمة الفحوصات الطبية التي تقدمها موفق أعمال للشركات؟

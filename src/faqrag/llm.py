@@ -29,9 +29,11 @@ class LLMError(RuntimeError):
     """Raised when a generation backend fails."""
 
 
-def strip_reasoning(text: str) -> str:
+def strip_reasoning(text: str, *, trim: bool = True) -> str:
     """Remove ``<think>``-style reasoning blocks and surrounding whitespace."""
-    return _THINK_TAG_RE.sub("", text).strip()
+    text = _THINK_TAG_RE.sub("", text)
+    # Stream fragments may carry word separators or only part of a word.
+    return text.strip() if trim else text
 
 
 class LLMClient(ABC):
@@ -162,7 +164,7 @@ class OllamaLLM(LLMClient):
                         continue
                     body = json.loads(line)
                     message = body.get("message", {})
-                    content = strip_reasoning(message.get("content", ""))
+                    content = strip_reasoning(message.get("content", ""), trim=False)
                     if content:
                         yield content
         except httpx.HTTPError as exc:
@@ -243,7 +245,7 @@ class OpenAILLM(LLMClient):
                     body = json.loads(raw)
                     delta = body["choices"][0].get("delta", {}).get("content")
                     if delta:
-                        yield strip_reasoning(delta)
+                        yield strip_reasoning(delta, trim=False)
         except httpx.HTTPError as exc:
             raise LLMError(
                 f"OpenAI chat stream failed: {describe_http_error(exc)}"
@@ -344,7 +346,7 @@ class AnthropicLLM(LLMClient):
                         continue
                     delta = body.get("delta", {}).get("text", "")
                     if delta:
-                        yield strip_reasoning(delta)
+                        yield strip_reasoning(delta, trim=False)
         except httpx.HTTPError as exc:
             raise LLMError(
                 f"Anthropic stream to {self._model} failed: {describe_http_error(exc)}"

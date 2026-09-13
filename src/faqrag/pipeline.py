@@ -26,6 +26,19 @@ class _SpeechChunkBuffer:
     def __init__(self, max_chars: int = 180) -> None:
         self._pending = ""
         self._max_chars = max_chars
+        self._emitted = False
+        self._separator_pending = False
+
+    def _clean_chunk(self, text: str) -> str:
+        chunk = clean_answer_text(text)
+        if not chunk:
+            self._separator_pending |= bool(text)
+            return ""
+        if self._emitted and (self._separator_pending or text[:1].isspace()):
+            chunk = " " + chunk
+        self._emitted = True
+        self._separator_pending = text[-1:].isspace()
+        return chunk
 
     def add(self, text: str) -> list[str]:
         self._pending += text
@@ -33,21 +46,21 @@ class _SpeechChunkBuffer:
         while True:
             match = re.search(r"[.!?\u061f](?:\s|$)", self._pending)
             if match:
-                completed.append(clean_answer_text(self._pending[: match.end()]))
+                completed.append(self._clean_chunk(self._pending[: match.end()]))
                 self._pending = self._pending[match.end() :]
                 continue
             if len(self._pending) >= self._max_chars:
                 split_at = self._pending.rfind(" ", 0, self._max_chars)
                 if split_at <= 0:
                     split_at = self._max_chars
-                completed.append(clean_answer_text(self._pending[:split_at]))
+                completed.append(self._clean_chunk(self._pending[:split_at]))
                 self._pending = self._pending[split_at:]
                 continue
             break
         return [chunk for chunk in completed if chunk]
 
     def flush(self) -> list[str]:
-        chunk = clean_answer_text(self._pending)
+        chunk = self._clean_chunk(self._pending)
         self._pending = ""
         return [chunk] if chunk else []
 
@@ -204,6 +217,12 @@ class RagPipeline:
             for delta_text in speech_buffer.add(newly_visible):
                 yield StreamEvent(event="delta", data={"text": delta_text})
 
+        # Release the marker look-behind when the model finishes without sources.
+        current = "".join(parts)
+        marker_index = current.upper().find(_STREAM_SOURCES_MARKER)
+        visible_end = marker_index if marker_index != -1 else len(current)
+        for delta_text in speech_buffer.add(current[emitted_raw_length:visible_end]):
+            yield StreamEvent(event="delta", data={"text": delta_text})
         for delta_text in speech_buffer.flush():
             yield StreamEvent(event="delta", data={"text": delta_text})
 
